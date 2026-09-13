@@ -542,7 +542,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ---
 
-### Benchmark #4 - Batch SQS (10 msgs/batch)
+### Benchmark #4 - Batch SQS (10 msgs/batch) + Scheduling Fix
 **Data:** 12/09/2026
 
 #### Configuração
@@ -568,14 +568,14 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ```
 ── RUN STATUS ──────────────────────────────────────────────────────
-  Start:     23:19:32
-  End:       23:21:22
-  Duration:  109.9s
+  Start:     23:35:48
+  End:       23:37:44
+  Duration:  115.9s
   Total:    60047 msgs
-  Avg Rate: 546 msg/s
-  Peak Rate: 2395 msg/s
-  SQS Queue: 60000 msgs
-  Status:   ⚠ 47 msgs pending in SQS
+  Avg Rate: 518 msg/s
+  Peak Rate: 2393 msg/s
+  SQS Queue: 60047 msgs
+  Status:   ✓ All messages in SQS
 
   ── SUMMARY ─────────────────────────────────────────────────────────
   Containers:  6 active
@@ -587,34 +587,34 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
   PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
                        (max)                                                (min/med/max)      (min/med/max)     
   ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  8080        10008     6653  9.96ms          9.96ms          9.96ms          1.1/4.1/11.5%      169/199/204 MiB   
-  8081        10008     7234  9.96ms          9.96ms          9.96ms          0.7/4.1/14.4%      170/200/205 MiB   
-  8082        10008     6867  9.96ms          9.96ms          9.96ms          0.6/4.1/15.1%      170/200/211 MiB   
-  8083        10008     6827  9.96ms          9.96ms          9.96ms          0.8/5.3/14.9%      171/201/206 MiB   
-  8084        10008     6949  9.96ms          9.96ms          9.96ms          0.9/4.5/13.0%      175/206/213 MiB   
-  8085        10007     3484  9.96ms          9.96ms          9.96ms          1.0/4.6/12.9%      172/202/207 MiB
+  8080        10008     5562  9.96ms          9.96ms          9.96ms          1.3/5.5/49.3%      172/206/210 MiB   
+  8081        10008     5311  9.96ms          9.96ms          9.96ms          1.1/6.2/41.2%      170/202/206 MiB   
+  8082        10007     5039  9.96ms          9.96ms          9.96ms          0.9/5.2/31.9%      175/207/210 MiB   
+  8083        10008     5815  9.96ms          9.96ms          9.96ms          1.2/5.5/38.0%      179/208/213 MiB   
+  8084        10008     5166  9.96ms          9.96ms          9.96ms          1.0/4.4/49.4%      172/205/209 MiB   
+  8085        10008     4934  9.96ms          9.96ms          9.96ms          1.5/5.2/26.3%      175/206/210 MiB
 ```
 
 | Métrica | Valor |
 |---------|-------|
-| **Throughput Médio** | 546 msg/s |
-| **Throughput Pico** | 2.395 msg/s |
+| **Throughput Médio** | 518 msg/s |
+| **Throughput Pico** | 2.393 msg/s |
 | **Latência P50** | 9.96ms |
 | **Latência P90** | 9.96ms |
 | **Latência P99** | 9.96ms |
-| **Lag Max** | 3.484-7.234 msgs |
-| **SQS Status** | ⚠ 47 msgs pending (buffer flush) |
-| **CPU Max** | 11-15% |
-| **Memória Max** | 204-213 MiB |
+| **Lag Max** | 4.934-5.815 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 26-49% |
+| **Memória Max** | 206-213 MiB |
 
 #### Alterações em Relação ao Benchmark #3
 
 - **SQS Mode**: Async → Async + Batch (10 msgs/batch)
-- **Throughput**: +6.4% (513 → 546 msg/s)
-- **CPU Max**: -65% (35-42% → 11-15%)
-- **Lag Max**: +26% (5.307-5.660 → 3.484-7.234)
+- **Throughput**: +1.0% (513 → 518 msg/s)
+- **CPU Max**: +18% (35-42% → 26-49%)
+- **SQS**: ✓ 100% entregues (vs ⚠ 46 pending)
 
-**Conclusão**: Batch SQS reduziu CPU drasticamente (-65%) com ganho moderado de throughput. O gargalo agora é o fetch do Kafka (fetch.max.wait.ms). Próxima melhoria: aumentar max.poll.records ou fetch.min.bytes.
+**Conclusão**: Batch SQS com scheduling fix garante 100% de entrega. Throughput similar ao Benchmark #3, mas com CPU mais consistente. Próxima melhoria: aumentar max.poll.records ou fetch.min.bytes.
 
 ---
 
