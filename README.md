@@ -542,6 +542,82 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ---
 
+### Benchmark #4 - Batch SQS (10 msgs/batch)
+**Data:** 12/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 500 |
+| **Fetch Min Bytes** | 1 |
+| **Fetch Max Wait** | 10ms |
+| **Concurrency** | 3 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 48 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | 10ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Batch (10 msgs) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     23:19:32
+  End:       23:21:22
+  Duration:  109.9s
+  Total:    60047 msgs
+  Avg Rate: 546 msg/s
+  Peak Rate: 2395 msg/s
+  SQS Queue: 60000 msgs
+  Status:   ⚠ 47 msgs pending in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60047 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10008     6653  9.96ms          9.96ms          9.96ms          1.1/4.1/11.5%      169/199/204 MiB   
+  8081        10008     7234  9.96ms          9.96ms          9.96ms          0.7/4.1/14.4%      170/200/205 MiB   
+  8082        10008     6867  9.96ms          9.96ms          9.96ms          0.6/4.1/15.1%      170/200/211 MiB   
+  8083        10008     6827  9.96ms          9.96ms          9.96ms          0.8/5.3/14.9%      171/201/206 MiB   
+  8084        10008     6949  9.96ms          9.96ms          9.96ms          0.9/4.5/13.0%      175/206/213 MiB   
+  8085        10007     3484  9.96ms          9.96ms          9.96ms          1.0/4.6/12.9%      172/202/207 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 546 msg/s |
+| **Throughput Pico** | 2.395 msg/s |
+| **Latência P50** | 9.96ms |
+| **Latência P90** | 9.96ms |
+| **Latência P99** | 9.96ms |
+| **Lag Max** | 3.484-7.234 msgs |
+| **SQS Status** | ⚠ 47 msgs pending (buffer flush) |
+| **CPU Max** | 11-15% |
+| **Memória Max** | 204-213 MiB |
+
+#### Alterações em Relação ao Benchmark #3
+
+- **SQS Mode**: Async → Async + Batch (10 msgs/batch)
+- **Throughput**: +6.4% (513 → 546 msg/s)
+- **CPU Max**: -65% (35-42% → 11-15%)
+- **Lag Max**: +26% (5.307-5.660 → 3.484-7.234)
+
+**Conclusão**: Batch SQS reduziu CPU drasticamente (-65%) com ganho moderado de throughput. O gargalo agora é o fetch do Kafka (fetch.max.wait.ms). Próxima melhoria: aumentar max.poll.records ou fetch.min.bytes.
+
+---
+
 ### Template para Novos Benchmarks
 
 Para adicionar um novo benchmark, copie o template abaixo:
