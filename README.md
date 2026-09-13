@@ -340,6 +340,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | 9 | max.poll=2000 + batch=50 | 2261 msg/s | +381% | 0.84ms | ✓ |
 | **10** | **Load workers=192** | **4018 msg/s** | **+755%** | **4.96-301ms** | ✓ |
 | 11 | fetch.wait=1 + load batch=5000 | 4078 msg/s | +768% | 6.54-503ms | ✓ |
+| **12** | **Parallel SQS** | **4623 msg/s** | **+884%** | **201-499ms** | ✓ |
 
 **Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s com listener simples.
 
@@ -1184,6 +1185,85 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 - **CPU Max**: +8% (48-50% → 49-54%)
 
 **Conclusão**: Otimizações de batch e fetch não melhoraram throughput significativamente - sistema já está no limite de CPU (50%). Próxima otimização: JVM tuning ou parallel SQS sends.
+
+---
+
+### Benchmark #12 - Parallel SQS Sends
+**Data:** 13/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 2000 |
+| **Fetch Min Bytes** | 4096 |
+| **Fetch Max Wait** | 1ms |
+| **Concurrency** | 5 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 192 goroutines |
+| **Batch Size** | 5000 |
+| **Processing Delay** | 0ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Parallel Batch (100 msgs) |
+| **Kafka Listener** | Batch (até 2000 msgs/poll) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     00:44:14
+  End:       00:44:27
+  Duration:  13.0s
+  Total:    60191 msgs
+  Avg Rate: 4623 msg/s
+  Peak Rate: 44290 msg/s
+  SQS Queue: 60191 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60191 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10032     0  209.45ms        519.83ms        1341.92ms       3.6/31.8/50.3%     174/209/242 MiB   
+  8081        10031     0  499.12ms        1405.09ms       1405.09ms       18.3/30.8/49.5%    176/216/252 MiB   
+  8082        10032     0  419.30ms        1744.70ms       1744.70ms       4.2/30.5/50.1%     176/226/255 MiB   
+  8083        10032     0  297.80ms        801.11ms        901.78ms        9.8/45.1/51.0%     178/213/249 MiB   
+  8084        10032     0  314.57ms        1539.31ms       1539.31ms       4.0/22.2/51.6%     173/214/244 MiB   
+  8085        10032     0  201.20ms        972.95ms        2013.13ms       10.7/39.9/53.6%    177/229/256 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 4623 msg/s |
+| **Throughput Pico** | 44.290 msg/s |
+| **Latência P50** | 201-499ms |
+| **Latência P90** | 519-1744ms |
+| **Latência P99** | 901-2013ms |
+| **Lag Max** | 0 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 49-54% |
+| **Memória Max** | 242-256 MiB |
+
+#### Alterações em Relação ao Benchmark #11
+
+- **SQS Client**: SqsClient → SqsAsyncClient
+- **SQS Sends**: Sequential → Parallel (CompletableFuture)
+- **Throughput**: +13.4% (4078 → 4623 msg/s)
+- **Duração**: -12% (14.8s → 13.0s)
+- **Peak Rate**: +9% (40475 → 44290 msg/s)
+- **Memória Max**: +13% (217-228 → 242-256 MiB)
+
+**Conclusão**: Parallel SQS sends é a segunda otimização mais impactante (após batch listener). Enviar múltiplos batches em paralelo reduz overhead de HTTP e aumenta throughput em 13.4%.
 
 ---
 
