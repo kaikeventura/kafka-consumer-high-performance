@@ -341,6 +341,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | **10** | **Load workers=192** | **4018 msg/s** | **+755%** | **4.96-301ms** | ✓ |
 | 11 | fetch.wait=1 + load batch=5000 | 4078 msg/s | +768% | 6.54-503ms | ✓ |
 | **12** | **Parallel SQS** | **4623 msg/s** | **+884%** | **201-499ms** | ✓ |
+| 13 | JVM Tuning (G1GC) | 3414 msg/s | +626% | 209-603ms | ✓ |
 
 **Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s com listener simples.
 
@@ -1264,6 +1265,85 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 - **Memória Max**: +13% (217-228 → 242-256 MiB)
 
 **Conclusão**: Parallel SQS sends é a segunda otimização mais impactante (após batch listener). Enviar múltiplos batches em paralelo reduz overhead de HTTP e aumenta throughput em 13.4%.
+
+---
+
+### Benchmark #13 - JVM Tuning (G1GC) ❌ FALHOU
+**Data:** 13/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 2000 |
+| **Fetch Min Bytes** | 4096 |
+| **Fetch Max Wait** | 1ms |
+| **Concurrency** | 5 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 192 goroutines |
+| **Batch Size** | 5000 |
+| **Processing Delay** | 0ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Parallel Batch (100 msgs) |
+| **Kafka Listener** | Batch (até 2000 msgs/poll) |
+| **JVM Flags** | G1GC, MaxGCPauseMillis=20, G1HeapRegionSize=4m |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     00:49:36
+  End:       00:49:53
+  Duration:  17.6s
+  Total:    60190 msgs
+  Avg Rate: 3414 msg/s
+  Peak Rate: 30613 msg/s
+  SQS Queue: 60190 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60190 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10032     0  603.85ms        1610.48ms       2013.13ms       4.9/49.3/54.3%     199/231/311 MiB   
+  8081        10032     0  314.57ms        1002.44ms       1337.98ms       8.9/49.2/49.8%     201/246/303 MiB   
+  8082        10032     0  209.45ms        905.71ms        1811.68ms       4.9/50.1/51.4%     202/245/412 MiB   
+  8083        10031     0  419.30ms        1610.48ms       2550.01ms       5.8/50.0/50.4%     228/253/314 MiB   
+  8084        10032     0  297.80ms        1941.96ms       2009.07ms       5.7/48.7/49.9%     204/223/300 MiB   
+  8085        10031     0  301.86ms        1409.16ms       2415.79ms       5.6/50.0/51.8%     229/266/358 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 3414 msg/s |
+| **Throughput Pico** | 30.613 msg/s |
+| **Latência P50** | 209-603ms |
+| **Latência P90** | 905-1941ms |
+| **Latência P99** | 1337-2550ms |
+| **Lag Max** | 0 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 49-54% |
+| **Memória Max** | 300-412 MiB |
+
+#### Alterações em Relação ao Benchmark #12
+
+- **JVM Flags**: Default → G1GC + tuning flags
+- **Throughput**: -26% (4623 → 3414 msg/s) ❌
+- **Duração**: +35% (13.0s → 17.6s) ❌
+- **Memória Max**: +41% (242-256 → 300-412 MiB) ❌
+- **Latência P50**: +108% (201-499ms → 209-603ms) ❌
+
+**Conclusão**: JVM tuning com G1GC causou overhead em vez de melhoria. As flags `-XX:MaxGCPauseMillis=20` e `-XX:G1HeapRegionSize=4m` aumentaram uso de memória e reduziram throughput. **Revertido para configuração padrão.**
 
 ---
 
