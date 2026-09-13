@@ -466,6 +466,82 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ---
 
+### Benchmark #3 - Concurrency 3 + Async SQS
+**Data:** 12/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 500 |
+| **Fetch Min Bytes** | 1 |
+| **Fetch Max Wait** | 10ms |
+| **Concurrency** | 3 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 48 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | 10ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async (@Async) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     23:08:18
+  End:       23:10:15
+  Duration:  117.0s
+  Total:    60047 msgs
+  Avg Rate: 513 msg/s
+  Peak Rate: 2388 msg/s
+  SQS Queue: 60047 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60047 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10008     5307  9.96ms          9.96ms          9.96ms          0.7/9.9/40.7%      169/206/214 MiB   
+  8081        10008     5660  9.96ms          9.96ms          9.96ms          0.7/10.4/38.8%     171/209/212 MiB   
+  8082        10008     5636  9.96ms          9.96ms          9.96ms          0.8/9.5/36.3%      171/210/214 MiB   
+  8083        10007     5524  9.96ms          9.96ms          9.96ms          0.7/9.7/35.8%      174/213/223 MiB   
+  8084        10008     5533  9.96ms          9.96ms          9.96ms          0.7/6.7/42.3%      169/208/220 MiB   
+  8085        10008     5605  9.96ms          9.96ms          9.96ms          0.7/6.9/37.7%      177/215/223 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 513 msg/s |
+| **Throughput Pico** | 2.388 msg/s |
+| **Latência P50** | 9.96ms |
+| **Latência P90** | 9.96ms |
+| **Latência P99** | 9.96ms |
+| **Lag Max** | 5.307-5.660 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 35-42% |
+| **Memória Max** | 212-223 MiB |
+
+#### Alterações em Relação ao Benchmark #2
+
+- **Concurrency**: 1 → 3 (18 threads total)
+- **Throughput**: -1.3% (520 → 513 msg/s)
+- **Lag Max**: -10% (5.763-6.346 → 5.307-5.660)
+- **CPU Med**: +20% (8-9% → 10%)
+
+**Conclusão**: O gargalo não é concorrência de threads, mas sim throughput do SQS e fetch do Kafka. Próxima melhoria: Batch SQS.
+
+---
+
 ### Template para Novos Benchmarks
 
 Para adicionar um novo benchmark, copie o template abaixo:
