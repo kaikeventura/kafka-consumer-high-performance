@@ -63,7 +63,7 @@ public class SqsProducerService {
 
     private void flushBatch() {
         List<String> messages = new ArrayList<>();
-        while (!buffer.isEmpty() && messages.size() < batchSize) {
+        while (!buffer.isEmpty()) {
             String msg = buffer.poll();
             if (msg != null) {
                 messages.add(msg);
@@ -75,20 +75,26 @@ public class SqsProducerService {
         }
 
         try {
-            List<SendMessageBatchRequestEntry> entries = new ArrayList<>();
-            for (int i = 0; i < messages.size(); i++) {
-                entries.add(SendMessageBatchRequestEntry.builder()
-                        .id(String.valueOf(i))
-                        .messageBody(messages.get(i))
-                        .build());
+            // SQS batch limit is 10
+            for (int i = 0; i < messages.size(); i += 10) {
+                int end = Math.min(i + 10, messages.size());
+                List<String> chunk = messages.subList(i, end);
+
+                List<SendMessageBatchRequestEntry> entries = new ArrayList<>();
+                for (int j = 0; j < chunk.size(); j++) {
+                    entries.add(SendMessageBatchRequestEntry.builder()
+                            .id(String.valueOf(j))
+                            .messageBody(chunk.get(j))
+                            .build());
+                }
+
+                SendMessageBatchRequest request = SendMessageBatchRequest.builder()
+                        .queueUrl(queueUrl)
+                        .entries(entries)
+                        .build();
+
+                sqsClient.sendMessageBatch(request);
             }
-
-            SendMessageBatchRequest request = SendMessageBatchRequest.builder()
-                    .queueUrl(queueUrl)
-                    .entries(entries)
-                    .build();
-
-            sqsClient.sendMessageBatch(request);
             pendingCount.addAndGet(-messages.size());
             log.debug("Batch sent to SQS: {} messages", messages.size());
         } catch (Exception e) {
