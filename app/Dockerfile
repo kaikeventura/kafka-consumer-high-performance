@@ -18,4 +18,12 @@ COPY --from=builder /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", \
+    "-XX:+UseG1GC", \
+    "-XX:MaxGCPauseMillis=20", \
+    "-XX:G1HeapRegionSize=4m", \
+    "-XX:+ParallelRefProcEnabled", \
+    "-XX:ActiveProcessorCount=2", \
+    "-Xms512m", \
+    "-Xmx900m", \
+    "-jar", "app.jar"]
