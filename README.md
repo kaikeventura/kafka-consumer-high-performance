@@ -337,6 +337,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | 6 | Concurrency 5 | 518 msg/s | +10.2% | 9.96ms | ✓ |
 | 7 | fetch.min=4096 + batch=20 | 527 msg/s | +12.1% | 9.96ms | ✓ |
 | **8** | **Batch Listener** | **2433 msg/s** | **+418%** | **0.75ms** | ✓ |
+| 9 | max.poll=2000 + batch=50 | 2261 msg/s | +381% | 0.84ms | ✓ |
 
 **Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s com listener simples.
 
@@ -947,6 +948,83 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 - **Latência P50**: -85% (9.96ms → 0.58-0.91ms)
 
 **Conclusão**: Batch Kafka Listener é a otimização mais impactante. Processa até 1000 msgs por poll, eliminando overhead de polling individual. Throughput aumenta 4.6x com latência 85% menor.
+
+---
+
+### Benchmark #9 - max.poll=2000 + SQS Batch 50
+**Data:** 13/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 2000 |
+| **Fetch Min Bytes** | 4096 |
+| **Fetch Max Wait** | 10ms |
+| **Concurrency** | 5 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 48 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | 0ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Batch (50 msgs) |
+| **Kafka Listener** | Batch (até 2000 msgs/poll) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     00:21:38
+  End:       00:22:05
+  Duration:  26.6s
+  Total:    60046 msgs
+  Avg Rate: 2261 msg/s
+  Peak Rate: 15702 msg/s
+  SQS Queue: 60046 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60046 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10008     0  1.23ms          96.45ms         109.04ms        2.8/30.2/50.9%     180/204/213 MiB   
+  8081        10008     0  0.88ms          88.07ms         201.32ms        1.6/11.6/52.8%     184/207/214 MiB   
+  8082        10008     0  0.94ms          92.27ms         201.32ms        1.5/2.3/50.1%      187/206/210 MiB   
+  8083        10007     0  1.10ms          96.45ms         201.31ms        1.7/6.2/50.2%      180/204/212 MiB   
+  8084        10007     0  0.84ms          71.29ms         104.85ms        3.1/6.0/54.6%      181/205/210 MiB   
+  8085        10008     0  0.71ms          71.29ms         100.66ms        1.8/6.8/53.4%      184/208/215 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 2261 msg/s |
+| **Throughput Pico** | 15.702 msg/s |
+| **Latência P50** | 0.71-1.23ms |
+| **Latência P90** | 71-96ms |
+| **Latência P99** | 100-201ms |
+| **Lag Max** | 0 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 50-55% |
+| **Memória Max** | 210-215 MiB |
+
+#### Alterações em Relação ao Benchmark #8
+
+- **Max Poll Records**: 1000 → 2000
+- **SQS Batch Size**: 20 → 50
+- **Throughput**: -7% (2433 → 2261 msg/s)
+- **CPU Max**: +5% (48-55% → 50-55%)
+
+**Conclusão**: Aumentar max.poll.records e SQS batch não melhorou throughput - na verdade caiu levemente. O gargalo agora é CPU (50-55%). Próxima otimização: aumentar load workers para testar limite real.
 
 ---
 
