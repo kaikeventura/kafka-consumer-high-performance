@@ -16,20 +16,38 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 @Configuration
 public class KafkaConfig {
 
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${spring.kafka.consumer.group-id}")
+    private String groupId;
+
+    @Value("${spring.kafka.consumer.auto-offset-reset}")
+    private String autoOffsetReset;
+
+    @Value("${spring.kafka.consumer.properties.max.poll.records}")
+    private int maxPollRecords;
+
+    @Value("${spring.kafka.consumer.properties.fetch.min.bytes}")
+    private int fetchMinBytes;
+
+    @Value("${spring.kafka.consumer.properties.fetch.max.wait.ms}")
+    private int fetchMaxWaitMs;
+
     @Value("${spring.kafka.listener.concurrency}")
     private int concurrency;
 
     @Bean
     public ConsumerFactory<String, String> consumerFactory() {
         Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "${spring.kafka.bootstrap-servers}");
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "${spring.kafka.consumer.group-id}");
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "${spring.kafka.consumer.auto-offset-reset}");
-        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "${spring.kafka.consumer.properties.max.poll.records}");
-        props.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "${spring.kafka.consumer.properties.fetch.min.bytes}");
-        props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "${spring.kafka.consumer.properties.fetch.max.wait.ms}");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
+        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords);
+        props.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, fetchMinBytes);
+        props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, fetchMaxWaitMs);
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
