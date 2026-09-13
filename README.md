@@ -339,7 +339,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | **8** | **Batch Listener** | **2433 msg/s** | **+418%** | **0.75ms** | ✓ |
 | 9 | max.poll=2000 + batch=50 | 2261 msg/s | +381% | 0.84ms | ✓ |
 | **10** | **Load workers=192** | **4018 msg/s** | **+755%** | **4.96-301ms** | ✓ |
-| 11 | fetch.wait=1 + load batch=5000 | 4015 msg/s | +754% | 108-402ms | ✓ |
+| 11 | fetch.wait=1 + load batch=5000 | 4078 msg/s | +768% | 6.54-503ms | ✓ |
 
 **Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s com listener simples.
 
@@ -1135,12 +1135,12 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ```
 ── RUN STATUS ──────────────────────────────────────────────────────
-  Start:     00:33:25
-  End:       00:33:40
-  Duration:  15.0s
+  Start:     00:37:58
+  End:       00:38:13
+  Duration:  14.8s
   Total:    60191 msgs
-  Avg Rate: 4015 msg/s
-  Peak Rate: 23367 msg/s
+  Avg Rate: 4078 msg/s
+  Peak Rate: 40475 msg/s
   SQS Queue: 60191 msgs
   Status:   ✓ All messages in SQS
 
@@ -1154,36 +1154,36 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
   PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
                        (max)                                                (min/med/max)      (min/med/max)     
   ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  8080        10032     0  108.99ms        402.59ms        503.25ms        7.3/47.4/50.0%     185/194/220 MiB   
-  8081        10032     0  201.26ms        603.91ms        704.58ms        2.6/46.4/50.3%     184/200/221 MiB   
-  8082        10032     0  209.65ms        704.58ms        805.24ms        4.3/51.2/52.0%     187/199/217 MiB   
-  8083        10031     0  209.58ms        603.85ms        905.84ms        3.1/45.5/49.9%     192/207/217 MiB   
-  8084        10032     0  402.59ms        520.03ms        738.13ms        6.9/45.0/50.7%     183/198/220 MiB   
-  8085        10032     0  113.23ms        419.41ms        503.30ms        2.9/50.1/50.7%     185/199/221 MiB
+  8080        10032     0  503.19ms        1006.50ms       1006.50ms       8.1/31.8/53.7%     185/199/217 MiB   
+  8081        10031     0  217.97ms        704.51ms        704.51ms        4.5/24.5/51.1%     191/206/226 MiB   
+  8082        10032     0  314.57ms        1002.44ms       1002.44ms       7.9/26.1/53.2%     182/198/220 MiB   
+  8083        10032     0  201.06ms        318.50ms        402.39ms        6.4/29.0/52.1%     185/206/228 MiB   
+  8084        10032     0  209.45ms        805.04ms        1006.37ms       5.2/31.6/53.2%     190/203/222 MiB   
+  8085        10032     0  6.54ms          104.84ms        503.30ms        2.9/7.0/49.2%      190/203/217 MiB
 ```
 
 | Métrica | Valor |
 |---------|-------|
-| **Throughput Médio** | 4015 msg/s |
-| **Throughput Pico** | 23.367 msg/s |
-| **Latência P50** | 108-402ms |
-| **Latência P90** | 402-704ms |
-| **Latência P99** | 503-905ms |
+| **Throughput Médio** | 4078 msg/s |
+| **Throughput Pico** | 40.475 msg/s |
+| **Latência P50** | 6.54-503ms |
+| **Latência P90** | 104-1006ms |
+| **Latência P99** | 402-1006ms |
 | **Lag Max** | 0 msgs |
 | **SQS Status** | ✓ All messages delivered |
-| **CPU Max** | 49-52% |
-| **Memória Max** | 217-221 MiB |
+| **CPU Max** | 49-54% |
+| **Memória Max** | 217-228 MiB |
 
 #### Alterações em Relação ao Benchmark #10
 
 - **Fetch Max Wait**: 10ms → 1ms
 - **Load Batch Size**: 1000 → 5000
 - **SQS Batch Size**: 50 → 100
-- **Throughput**: 0% (4018 → 4015 msg/s)
-- **CPU Max**: +4% (48-50% → 49-52%)
-- **Latência P50**: +208% (4.96-301ms → 108-402ms)
+- **Throughput**: +1.5% (4018 → 4078 msg/s)
+- **Peak Rate**: +73% (23367 → 40475 msg/s)
+- **CPU Max**: +8% (48-50% → 49-54%)
 
-**Conclusão**: Otimizações de batch e fetch não melhoraram throughput - sistema já está no limite de CPU (50%). Próxima otimização: JVM tuning ou parallel SQS sends.
+**Conclusão**: Otimizações de batch e fetch não melhoraram throughput significativamente - sistema já está no limite de CPU (50%). Próxima otimização: JVM tuning ou parallel SQS sends.
 
 ---
 
