@@ -618,6 +618,86 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ---
 
+### Benchmark #5 - max.poll.records = 1000
+**Data:** 12/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 1000 |
+| **Fetch Min Bytes** | 1 |
+| **Fetch Max Wait** | 10ms |
+| **Concurrency** | 3 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 48 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | 10ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Batch (10 msgs) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     23:43:20
+  End:       23:45:16
+  Duration:  115.9s
+  Total:    60047 msgs
+  Avg Rate: 518 msg/s
+  Peak Rate: 2394 msg/s
+  SQS Queue: 60047 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60047 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10008     6390  9.96ms          9.96ms          9.96ms          0.9/4.2/31.9%      172/207/210 MiB   
+  8081        10008     6382  9.96ms          9.96ms          9.96ms          1.3/5.6/25.4%      174/208/212 MiB   
+  8082        10007     6431  9.96ms          9.96ms          9.96ms          1.1/6.2/36.3%      171/206/209 MiB   
+  8083        10008     6616  9.96ms          9.96ms          9.96ms          1.0/5.0/19.6%      175/206/210 MiB   
+  8084        10008     5634  9.96ms          9.96ms          9.96ms          1.4/5.1/18.0%      176/208/212 MiB   
+  8085        10008     6811  9.96ms          9.96ms          9.96ms          0.8/5.8/24.3%      175/207/212 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 518 msg/s |
+| **Throughput Pico** | 2.394 msg/s |
+| **Latência P50** | 9.96ms |
+| **Latência P90** | 9.96ms |
+| **Latência P99** | 9.96ms |
+| **Lag Max** | 5.634-6.811 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 18-36% |
+| **Memória Max** | 209-212 MiB |
+
+#### Alterações em Relação ao Benchmark #4
+
+- **Max Poll Records**: 500 → 1000
+- **Throughput**: 0% (518 → 518 msg/s)
+- **CPU Max**: -27% (26-49% → 18-36%)
+
+**Conclusão**: Aumentar max.poll.records não melhorou throughput. O gargalo é o **processing delay (10ms)** — cada thread processa ~100 msg/s. Com 3 threads × 6 containers = 18 threads × 100 msg/s = ~1800 msg/s teórico, mas limitado pelo SQS batch overhead.
+
+**Próximas opções**:
+1. Reduzir processing delay (10ms → 0ms)
+2. Aumentar concurrency (3 → 5)
+3. Aumentar batch size SQS (10 → 20)
+
+---
+
 ### Template para Novos Benchmarks
 
 Para adicionar um novo benchmark, copie o template abaixo:
