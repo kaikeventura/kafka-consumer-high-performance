@@ -17,7 +17,7 @@ spring:
       properties:
         max.poll.records: 2000
         fetch.min.bytes: 4096
-        fetch.max.wait.ms: 100
+        fetch.max.wait.ms: 10
     listener:
       concurrency: 5
 
@@ -29,7 +29,7 @@ aws:
 
 sqs:
   queue-name: output-queue
-  batch-size: 50
+  batch-size: 100
 
 processing:
   delay:

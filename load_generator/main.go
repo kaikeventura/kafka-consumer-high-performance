@@ -26,7 +26,7 @@ func main() {
 	brokers := getEnv("KAFKA_BROKERS", "localhost:9092")
 	topic := getEnv("KAFKA_TOPIC", "input-topic")
 	numWorkers := getEnvInt("NUM_WORKERS", 48)
-	batchSize := getEnvInt("BATCH_SIZE", 1000)
+	batchSize := getEnvInt("BATCH_SIZE", 5000)
 
 	totalMessages := 0
 	if len(os.Args) > 1 {
