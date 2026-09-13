@@ -1,5 +1,6 @@
 package com.highperformance.kafka.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -14,6 +15,9 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 
 @Configuration
 public class KafkaConfig {
+
+    @Value("${spring.kafka.listener.concurrency}")
+    private int concurrency;
 
     @Bean
     public ConsumerFactory<String, String> consumerFactory() {
@@ -35,7 +39,7 @@ public class KafkaConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setBatchListener(true);
         factory.setConsumerFactory(consumerFactory());
-        factory.setConcurrency("${spring.kafka.listener.concurrency}");
+        factory.setConcurrency(concurrency);
         return factory;
     }
 }
