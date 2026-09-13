@@ -1,7 +1,5 @@
 package com.highperformance.kafka.listener;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.highperformance.kafka.service.SqsProducerService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -19,14 +17,11 @@ public class MessageListener {
     private static final Logger log = LoggerFactory.getLogger(MessageListener.class);
 
     private final SqsProducerService sqsProducerService;
-    private final ObjectMapper objectMapper;
     private final Counter messageCounter;
 
     public MessageListener(SqsProducerService sqsProducerService,
-                           ObjectMapper objectMapper,
                            MeterRegistry meterRegistry) {
         this.sqsProducerService = sqsProducerService;
-        this.objectMapper = objectMapper;
         this.messageCounter = Counter.builder("kafka.messages.processed")
                 .description("Total messages processed")
                 .register(meterRegistry);
@@ -40,24 +35,25 @@ public class MessageListener {
     public void listenBatch(List<String> messages) {
         for (String message : messages) {
             try {
-                JsonNode jsonNode = objectMapper.readTree(message);
-
-                String id = jsonNode.get("id").asText();
-                String timestamp = jsonNode.get("timestamp").asText();
-
-                String processedMessage = objectMapper.writeValueAsString(
-                        new ProcessedMessage(id, timestamp, "processed")
-                );
-
+                String processedMessage = transformMessage(message);
                 sqsProducerService.sendMessage(processedMessage);
                 messageCounter.increment();
-
-                log.debug("Message processed: id={}", id);
             } catch (Exception e) {
                 log.error("Error processing message: {}", e.getMessage(), e);
             }
         }
     }
 
-    record ProcessedMessage(String id, String timestamp, String status) {}
+    private String transformMessage(String message) {
+        int dataIdx = message.indexOf("\"data\":");
+        if (dataIdx > 0) {
+            int cutStart = dataIdx;
+            if (message.charAt(dataIdx - 1) == ',') {
+                cutStart--;
+            }
+            return message.substring(0, cutStart) + ",\"status\":\"processed\"}";
+        }
+        int lastBrace = message.lastIndexOf('}');
+        return message.substring(0, lastBrace) + ",\"status\":\"processed\"}";
+    }
 }
