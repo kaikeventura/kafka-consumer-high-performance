@@ -339,6 +339,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | **8** | **Batch Listener** | **2433 msg/s** | **+418%** | **0.75ms** | ✓ |
 | 9 | max.poll=2000 + batch=50 | 2261 msg/s | +381% | 0.84ms | ✓ |
 | **10** | **Load workers=192** | **4018 msg/s** | **+755%** | **4.96-301ms** | ✓ |
+| 11 | fetch.wait=1 + load batch=5000 | 4015 msg/s | +754% | 108-402ms | ✓ |
 
 **Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s com listener simples.
 
@@ -1104,6 +1105,85 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 - **Latência P50**: +593% (0.84ms → 4.96-301ms)
 
 **Conclusão**: Aumentar load workers para 192 dobrou o throughput real. O sistema consegue processar 4000+ msg/s com 6 containers. Latência aumentou significativamente sob carga pesada, mas throughput é o dobro.
+
+---
+
+### Benchmark #11 - fetch.wait=1 + load batch=5000 + sqs batch=100
+**Data:** 13/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 2000 |
+| **Fetch Min Bytes** | 4096 |
+| **Fetch Max Wait** | 1ms |
+| **Concurrency** | 5 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 192 goroutines |
+| **Batch Size** | 5000 |
+| **Processing Delay** | 0ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Batch (100 msgs) |
+| **Kafka Listener** | Batch (até 2000 msgs/poll) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     00:33:25
+  End:       00:33:40
+  Duration:  15.0s
+  Total:    60191 msgs
+  Avg Rate: 4015 msg/s
+  Peak Rate: 23367 msg/s
+  SQS Queue: 60191 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60191 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10032     0  108.99ms        402.59ms        503.25ms        7.3/47.4/50.0%     185/194/220 MiB   
+  8081        10032     0  201.26ms        603.91ms        704.58ms        2.6/46.4/50.3%     184/200/221 MiB   
+  8082        10032     0  209.65ms        704.58ms        805.24ms        4.3/51.2/52.0%     187/199/217 MiB   
+  8083        10031     0  209.58ms        603.85ms        905.84ms        3.1/45.5/49.9%     192/207/217 MiB   
+  8084        10032     0  402.59ms        520.03ms        738.13ms        6.9/45.0/50.7%     183/198/220 MiB   
+  8085        10032     0  113.23ms        419.41ms        503.30ms        2.9/50.1/50.7%     185/199/221 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 4015 msg/s |
+| **Throughput Pico** | 23.367 msg/s |
+| **Latência P50** | 108-402ms |
+| **Latência P90** | 402-704ms |
+| **Latência P99** | 503-905ms |
+| **Lag Max** | 0 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 49-52% |
+| **Memória Max** | 217-221 MiB |
+
+#### Alterações em Relação ao Benchmark #10
+
+- **Fetch Max Wait**: 10ms → 1ms
+- **Load Batch Size**: 1000 → 5000
+- **SQS Batch Size**: 50 → 100
+- **Throughput**: 0% (4018 → 4015 msg/s)
+- **CPU Max**: +4% (48-50% → 49-52%)
+- **Latência P50**: +208% (4.96-301ms → 108-402ms)
+
+**Conclusão**: Otimizações de batch e fetch não melhoraram throughput - sistema já está no limite de CPU (50%). Próxima otimização: JVM tuning ou parallel SQS sends.
 
 ---
 
