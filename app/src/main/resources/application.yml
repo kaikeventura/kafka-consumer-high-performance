@@ -16,7 +16,7 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       properties:
         max.poll.records: 1000
-        fetch.min.bytes: 1
+        fetch.min.bytes: 4096
         fetch.max.wait.ms: 100
     listener:
       concurrency: 5
@@ -29,7 +29,7 @@ aws:
 
 sqs:
   queue-name: output-queue
-  batch-size: 10
+  batch-size: 20
 
 processing:
   delay:
