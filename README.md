@@ -1,0 +1,486 @@
+# Kafka Consumer High Performance
+
+Pipeline de processamento de mensagens de alta vazão:
+
+```
+Load Generator (Go) → Kafka (KRaft) → Spring Boot App (6 replicas) → SQS via Floci
+```
+
+## Arquitetura
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────────┐     ┌─────────────────┐
+│   Load Gen Go   │────▶│   Kafka KRaft   │────▶│  Spring Boot (x6)      │────▶│   Floci (SQS)   │
+│   localhost:     │     │   :29092/:9092   │     │  :8080-8085            │     │   :4566         │
+│   (unlimited)   │     │   6 partitions   │     │  1 partition/container │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────────────┘     └─────────────────┘
+                                    │
+                                    ▼
+                           ┌─────────────────┐
+                           │   Monitor Go    │
+                           │   polls:2s      │
+                           └─────────────────┘
+```
+
+## Pré-requisitos
+
+- Docker e Docker Compose
+- Go 1.21+
+- Java 21+ (apenas para desenvolvimento local)
+
+## Início Rápido
+
+```bash
+# 1. Subir infraestrutura
+docker compose up -d
+
+# 2. Verificar containers
+docker ps
+
+# 3. Criar tópico (se não foi criado automaticamente)
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic input-topic \
+  --partitions 6 \
+  --replication-factor 1
+
+# 4. Em terminais separados:
+cd load_generator && go run main.go 1000000
+cd monitor && go run main.go
+```
+
+## Estrutura do Projeto
+
+```
+├── docker-compose.yml              # Infraestrutura completa
+├── load_generator/                 # Gerador de carga (Go)
+│   ├── main.go                     # Producer com kafka-go
+│   └── go.mod
+├── monitor/                        # Dashboard de monitoramento (Go)
+│   ├── main.go                     # Polling de métricas Actuator
+│   └── go.mod
+└── app/                            # Aplicação Spring Boot
+    ├── Dockerfile                  # Multi-stage build
+    ├── pom.xml                     # Java 21, Spring Boot 3.3.4
+    └── src/main/
+        ├── java/com/highperformance/kafka/
+        │   ├── KafkaConsumerApplication.java
+        │   ├── config/
+        │   │   └── SqsConfig.java
+        │   ├── listener/
+        │   │   └── MessageListener.java
+        │   └── service/
+        │       └── SqsProducerService.java
+        └── resources/
+            └── application.yml
+```
+
+## Serviços
+
+| Serviço | Porta | Descrição |
+|---------|-------|-----------|
+| Kafka | 29092 (interno), 9092 (host) | Apache Kafka em modo KRaft |
+| Floci | 4566 | Emulador AWS SQS |
+| App (x6) | 8080-8085 | Spring Boot Kafka Consumer |
+| kafka-setup | - | Cria tópicos automaticamente |
+
+## Gerar Carga
+
+```bash
+cd load_generator
+
+# Enviar N mensagens
+go run main.go 1000000
+
+# Modo infinito
+go run main.go
+
+# Variáveis de ambiente:
+# KAFKA_BROKERS=localhost:9092
+# KAFKA_TOPIC=input-topic
+# NUM_WORKERS=48
+# BATCH_SIZE=1000
+```
+
+**Saída do load generator:**
+```
+[throughput] 45000 msg/s | total: 1000000 | elapsed: 22.3s | avg: 44843 msg/s
+
+✓ Load completed!
+  Duration:   22.31s
+  Messages:   1000000
+  Avg rate:   44843 msg/s
+```
+
+## Monitorar
+
+```bash
+cd monitor
+go run main.go
+
+# Variáveis de ambiente:
+# BASE_PORT=8080
+# NUM_CONTAINERS=6
+# INTERVAL_SEC=2
+```
+
+**Saída do monitor:**
+```
+╔══════════════════════════════════════════════════════════════════════════════════════════╗
+║                           KAFKA CONSUMER MONITOR                                        ║
+╚══════════════════════════════════════════════════════════════════════════════════════════╝
+
+  Updated: 23:08:26
+
+  ── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     23:08:26
+  End:       23:09:32
+  Duration:  66.2s
+  Total:     120011 msgs
+  Avg Rate:  1813 msg/s
+  Peak Rate: 5847 msg/s
+  SQS Queue: 120011 msgs
+  Status:    ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:   120011 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY
+                                                                          (min/med/max)      (min/med/max)
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080       20002     0          1.36ms        1.75ms        3.13ms        0.4/0.4/0.4%       210/210/210 MiB
+  8081       20001     0          1.29ms        1.75ms        3.13ms        0.4/0.4/0.4%       210/210/210 MiB
+  8082       20002     0          1.29ms        1.75ms        3.26ms        0.4/0.4/0.4%       210/210/210 MiB
+  8083       20002     0          1.36ms        1.75ms        3.26ms        0.4/0.4/0.4%       210/210/210 MiB
+  8084       20002     0          1.36ms        1.75ms        3.39ms        0.4/0.4/0.4%       210/210/210 MiB
+  8085       20002     0          1.29ms        1.82ms        3.39ms        0.4/0.4/0.4%       210/210/210 MiB
+```
+
+**Indicadores:**
+- **P50/P90/P99**: Latência de processamento em milissegundos
+- **LAG**: Mensagens pendentes no Kafka (0 = processou tudo)
+- **CPU**: Uso de CPU min/med/max por container
+- **MEMORY**: Uso de memória min/med/max por container
+- **SQS Queue**: Total de mensagens na fila SQS (verificação de perda)
+- **Status**: Confirma se todas as mensagens foram para o SQS
+
+## Endpoints Úteis
+
+### Actuator (por container)
+
+```bash
+# Listar todas as métricas
+curl http://localhost:8080/actuator/metrics
+
+# Lag do Kafka
+curl http://localhost:8080/actuator/metrics/kafka.consumer.fetch.manager.records.lag
+
+# Percentil P50
+curl "http://localhost:8080/actuator/metrics/spring.kafka.listener.percentile?tag=phi:0.5"
+
+# Mensagens processadas
+curl http://localhost:8080/actuator/metrics/kafka.consumer.fetch.manager.records.consumed.total
+```
+
+### Kafka
+
+```bash
+# Listar tópicos
+docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+# Descrever tópico
+docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic input-topic
+
+# Consumer groups
+docker exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+
+# Status do consumer group
+docker exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group high-perf-consumer-group --describe
+```
+
+### Floci (SQS)
+
+```bash
+# Criar fila
+aws sqs create-queue --queue-name output-queue --endpoint-url http://localhost:4566
+
+# Listar filas
+aws sqs list-queues --endpoint-url http://localhost:4566
+
+# Receber mensagem (não deleta)
+aws sqs receive-message --queue-url http://localhost:4566/000000000000/output-queue --endpoint-url http://localhost:4566
+
+# Health check
+curl http://localhost:4566/_localstack/health
+```
+
+## Configurações Importantes
+
+### Kafka (docker-compose.yml)
+
+- **KAFKA_AUTO_CREATE_TOPICS_ENABLE**: `false` (tópicos devem ser criados manualmente)
+- **KAFKA_NUM_PARTITIONS**: `6`
+- **Dual Listeners**: INTERNAL (kafka:29092) para containers, EXTERNAL (localhost:9092) para host
+
+### Spring Boot (application.yml)
+
+- **spring.kafka.listener.concurrency**: `1` (1 thread por container = 6 partições)
+- **management.metrics.distribution.percentiles**: Habilita P50/P90/P99
+
+### Load Generator
+
+- **Modo síncrono**: `Async: false` (aguarda confirmação do Kafka)
+- **Batch**: `BatchSize: 1000`, `BatchTimeout: 10ms`
+- **Workers**: 48 goroutines paralelas
+
+### Processing Delay (Opcional)
+
+Para simular processamento lento e testar lag:
+
+```bash
+# Subir com delay de 50ms por mensagem
+PROCESSING_DELAY_MS=50 docker compose up -d --build app
+
+# Subir sem delay (padrão)
+PROCESSING_DELAY_MS=0 docker compose up -d --build app
+```
+
+### Resource Limits
+
+Cada container tem limites de recursos:
+- **CPU**: 1.0 (máximo), 0.5 (reservado)
+- **Memória**: 1GB (máximo), 512MB (reservado)
+
+## Troubleshooting
+
+### Tópico não existe
+
+```bash
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic input-topic \
+  --partitions 6 \
+  --replication-factor 1
+```
+
+### Kafka não responde (localhost:9092)
+
+Verificar se o listener EXTERNAL está configurado:
+```bash
+docker exec kafka cat /opt/kafka/config/kraft/server.properties | grep LISTENERS
+```
+
+### Containers não sobem
+
+```bash
+docker compose down -v
+docker compose build --no-cache app
+docker compose up -d
+```
+
+### Métricas zeradas no monitor
+
+Verificar se o Actuator está exposto:
+```bash
+curl http://localhost:8080/actuator/metrics | head -50
+```
+
+## Parar Serviços
+
+```bash
+# Parar e remover containers
+docker compose down
+
+# Parar e remover containers + volumes
+docker compose down -v
+
+# Rebuild completo
+docker compose down -v && docker compose build --no-cache && docker compose up -d
+```
+
+## Métricas Disponíveis
+
+| Métrica | Descrição |
+|---------|-----------|
+| `spring.kafka.listener` | Timer do listener (COUNT, TOTAL_TIME, MAX) |
+| `spring.kafka.listener.percentile` | Percentis P50/P90/P99 |
+| `kafka.consumer.fetch.manager.records.lag` | Lag por partição |
+| `kafka.consumer.fetch.manager.records.consumed.total` | Total de mensagens consumidas |
+| `kafka.consumer.fetch.manager.records.lead` | Lead do consumer |
+
+## Tecnologias
+
+- **Kafka**: Apache Kafka 3.7.1 (KRaft mode)
+- **Spring Boot**: 3.3.4
+- **Java**: 21 (Eclipse Temurin Alpine)
+- **Go**: 1.21+ (kafka-go, prometheus)
+- **SQS Emulator**: Floci (LocalStack-compatible)
+- **Containerização**: Docker Compose
+
+## Benchmarks
+
+### Benchmark #1 - Configuração com Delay (100ms)
+**Data:** 12/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 500 |
+| **Fetch Min Bytes** | 1 |
+| **Fetch Max Wait** | 100ms |
+| **Concurrency** | 1 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 48 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | 100ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     22:32:57
+  End:       22:35:05
+  Duration:  127.7s
+  Total:    60047 msgs
+  Avg Rate: 470 msg/s
+  Peak Rate: 2136 msg/s
+  SQS Queue: 60047 msgs
+  Status:    ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:   60047 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY
+                       (max)                                                (min/med/max)      (min/med/max)
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080       10008     3962       11.01ms       11.53ms       15.20ms       0.8/8.6/25.6%      165/198/204 MiB
+  8081       10007     3970       11.01ms       11.53ms       15.20ms       1.6/9.6/28.0%      166/199/208 MiB
+  8082       10008     4028       11.01ms       11.53ms       15.73ms       1.3/7.6/24.8%      169/201/205 MiB
+  8083       10008     4658       11.01ms       11.53ms       15.73ms       1.2/8.9/26.3%      167/199/206 MiB
+  8084       10008     3756       11.01ms       11.53ms       15.73ms       1.0/8.3/27.7%      165/197/203 MiB
+  8085       10008     4133       11.01ms       11.53ms       15.73ms       1.5/8.3/23.2%      165/197/203 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 470 msg/s |
+| **Throughput Pico** | 2.136 msg/s |
+| **Latência P50** | 11.01ms |
+| **Latência P90** | 11.53ms |
+| **Latência P99** | 15.20-15.73ms |
+| **Lag Max** | 3.756-4.658 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 23-28% |
+| **Memória Max** | 203-208 MiB |
+
+---
+
+### Benchmark #2 - [Título]
+**Data:** [DD/MM/AAAA]
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 500 |
+| **Fetch Min Bytes** | 1 |
+| **Fetch Max Wait** | 100ms |
+| **Concurrency** | 1 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 48 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | [X]ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+
+#### Resultado
+
+```
+[Colar saída do monitor aqui]
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | [X] msg/s |
+| **Throughput Pico** | [X] msg/s |
+| **Latência P50** | [X]ms |
+| **Latência P90** | [X]ms |
+| **Latência P99** | [X]ms |
+| **Lag Max** | [X] msgs |
+| **SQS Status** | [✓/⚠] |
+| **CPU Max** | [X]% |
+| **Memória Max** | [X] MiB |
+
+#### Alterações em Relação ao Benchmark #1
+
+- [Descrever mudanças feitas]
+
+---
+
+### Template para Novos Benchmarks
+
+Para adicionar um novo benchmark, copie o template abaixo:
+
+```markdown
+### Benchmark #N - [Título]
+**Data:** [DD/MM/AAAA]
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | [valor] |
+| **Fetch Min Bytes** | [valor] |
+| **Fetch Max Wait** | [valor]ms |
+| **Concurrency** | [valor] (por container) |
+| **Containers** | [N] réplicas Spring Boot |
+| **Load Workers** | [N] goroutines |
+| **Batch Size** | [N] |
+| **Processing Delay** | [X]ms |
+| **CPU Limit** | [X] por container |
+| **Memory Limit** | [X]GB por container |
+
+#### Resultado
+
+```
+[Colar saída do monitor aqui]
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | [X] msg/s |
+| **Throughput Pico** | [X] msg/s |
+| **Latência P50** | [X]ms |
+| **Latência P90** | [X]ms |
+| **Latência P99** | [X]ms |
+| **Lag Max** | [X] msgs |
+| **SQS Status** | [✓/⚠] |
+| **CPU Max** | [X]% |
+| **Memória Max** | [X] MiB |
+
+#### Alterações em Relação ao Benchmark #N-1
+
+- [Descrever mudanças feitas]
+```

@@ -1,0 +1,63 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: kafka-consumer-high-performance
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    topic:
+      input: input-topic
+    consumer:
+      group-id: high-perf-consumer-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        max.poll.records: 500
+        fetch.min.bytes: 1
+        fetch.max.wait.ms: 100
+    listener:
+      concurrency: 1
+
+aws:
+  endpoint-url: ${AWS_ENDPOINT_URL:http://localhost:4566}
+  region: ${AWS_REGION:us-east-1}
+  access-key-id: ${AWS_ACCESS_KEY_ID:test}
+  secret-access-key: ${AWS_SECRET_ACCESS_KEY:test}
+
+sqs:
+  queue-name: output-queue
+
+processing:
+  delay:
+    ms: ${PROCESSING_DELAY_MS:0}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    distribution:
+      percentiles:
+        spring.kafka.listener: 0.5,0.9,0.99
+      percentiles-histogram:
+        spring.kafka.listener: true
+      publish-percentiles: true
+      publish-histogram: true
+      tags:
+        application: ${spring.application.name}
+  prometheus:
+    metrics:
+      export:
+        enabled: false
+
+logging:
+  level:
+    com.highperformance.kafka: DEBUG
+    org.springframework.kafka: INFO

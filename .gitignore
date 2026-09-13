@@ -1,0 +1,62 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Build artifacts
+target/
+*.class
+*.jar
+*.war
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Monitor binary
+monitor/monitor
+
+# Load generator binary
+load_generator/load_generator
