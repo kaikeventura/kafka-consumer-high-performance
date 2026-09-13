@@ -325,6 +325,22 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ## Benchmarks
 
+### Comparativo Geral
+
+| # | Configuração | Throughput | Δ vs #1 | Latência P50 | SQS |
+|---|--------------|------------|---------|--------------|-----|
+| 1 | Sync SQS (baseline) | 470 msg/s | - | 11.01ms | ✓ |
+| 2 | Async SQS | 520 msg/s | +10.6% | 9.96ms | ✓ |
+| 3 | Concurrency 3 | 513 msg/s | +9.1% | 9.96ms | ✓ |
+| 4 | Batch SQS (10) | 518 msg/s | +10.2% | 9.96ms | ✓ |
+| 5 | max.poll=1000 | 518 msg/s | +10.2% | 9.96ms | ✓ |
+| 6 | Concurrency 5 | 518 msg/s | +10.2% | 9.96ms | ✓ |
+| 7 | fetch.min=4096 + batch=20 | 527 msg/s | +12.1% | 9.96ms | ✓ |
+
+**Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s.
+
+---
+
 ### Benchmark #1 - Configuração com Delay (10ms)
 **Data:** 12/09/2026
 
