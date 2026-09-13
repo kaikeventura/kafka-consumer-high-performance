@@ -775,6 +775,83 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ---
 
+### Benchmark #7 - fetch.min.bytes=4096 + sqs batch-size=20
+**Data:** 12/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 1000 |
+| **Fetch Min Bytes** | 4096 |
+| **Fetch Max Wait** | 10ms |
+| **Concurrency** | 5 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 48 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | 10ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Batch (20 msgs) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     23:59:49
+  End:       00:01:42
+  Duration:  113.9s
+  Total:    60047 msgs
+  Avg Rate: 527 msg/s
+  Peak Rate: 2389 msg/s
+  SQS Queue: 60047 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60047 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10008     3704  9.96ms          9.96ms          9.96ms          0.6/4.8/12.3%      173/203/213 MiB   
+  8081        10008     4272  9.96ms          9.96ms          9.96ms          0.7/5.5/13.6%      176/206/210 MiB   
+  8082        10007     4510  9.96ms          9.96ms          9.96ms          0.7/4.9/11.4%      177/208/214 MiB   
+  8083        10008     4519  9.96ms          9.96ms          9.96ms          0.7/5.8/11.6%      175/203/211 MiB   
+  8084        10008     4142  9.96ms          9.96ms          9.96ms          0.9/3.8/12.5%      174/202/208 MiB   
+  8085        10008     3962  9.96ms          9.96ms          9.96ms          0.8/5.8/14.8%      172/202/212 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 527 msg/s |
+| **Throughput Pico** | 2.389 msg/s |
+| **Latência P50** | 9.96ms |
+| **Latência P90** | 9.96ms |
+| **Latência P99** | 9.96ms |
+| **Lag Max** | 3.704-4.519 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 11-15% |
+| **Memória Max** | 208-214 MiB |
+
+#### Alterações em Relação ao Benchmark #6
+
+- **Fetch Min Bytes**: 1 → 4096
+- **SQS Batch Size**: 10 → 20
+- **Throughput**: +1.7% (518 → 527 msg/s)
+- **Lag Max**: -33% (5.688-6.729 → 3.704-4.519)
+- **CPU Max**: -70% (21-50% → 11-15%)
+
+**Conclusão**: fetch.min.bytes reduz lag significativamente (-33%) e CPU (-70%), mas throughput só melhora marginalmente. O processing delay (10ms) continua sendo o gargalo principal.
+
+---
+
 ### Template para Novos Benchmarks
 
 Para adicionar um novo benchmark, copie o template abaixo:
