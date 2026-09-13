@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 
 import java.net.URI;
 
@@ -26,8 +26,8 @@ public class SqsConfig {
     private String secretAccessKey;
 
     @Bean
-    public SqsClient sqsClient() {
-        return SqsClient.builder()
+    public SqsAsyncClient sqsAsyncClient() {
+        return SqsAsyncClient.builder()
                 .endpointOverride(URI.create(endpointUrl))
                 .region(Region.of(region))
                 .credentialsProvider(

@@ -7,12 +7,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequestEntry;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -21,17 +22,17 @@ public class SqsProducerService {
 
     private static final Logger log = LoggerFactory.getLogger(SqsProducerService.class);
 
-    private final SqsClient sqsClient;
+    private final SqsAsyncClient sqsAsyncClient;
     private final String queueUrl;
     private final int batchSize;
     private final ConcurrentLinkedQueue<String> buffer = new ConcurrentLinkedQueue<>();
     private final AtomicInteger pendingCount = new AtomicInteger(0);
 
-    public SqsProducerService(SqsClient sqsClient,
+    public SqsProducerService(SqsAsyncClient sqsAsyncClient,
                               @Value("${sqs.queue-name}") String queueName,
                               @Value("${aws.endpoint-url}") String endpointUrl,
-                              @Value("${sqs.batch-size:10}") int batchSize) {
-        this.sqsClient = sqsClient;
+                              @Value("${sqs.batch-size:100}") int batchSize) {
+        this.sqsAsyncClient = sqsAsyncClient;
         this.queueUrl = endpointUrl + "/000000000000/" + queueName;
         this.batchSize = batchSize;
     }
@@ -75,6 +76,8 @@ public class SqsProducerService {
         }
 
         try {
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+
             // SQS batch limit is 10
             for (int i = 0; i < messages.size(); i += 10) {
                 int end = Math.min(i + 10, messages.size());
@@ -93,10 +96,17 @@ public class SqsProducerService {
                         .entries(entries)
                         .build();
 
-                sqsClient.sendMessageBatch(request);
+                // Send in parallel using async client
+                futures.add(CompletableFuture.runAsync(() -> {
+                    sqsAsyncClient.sendMessageBatch(request).join();
+                }));
             }
+
+            // Wait for all batches to complete
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
             pendingCount.addAndGet(-messages.size());
-            log.debug("Batch sent to SQS: {} messages", messages.size());
+            log.debug("Batch sent to SQS: {} messages ({} batches)", messages.size(), futures.size());
         } catch (Exception e) {
             log.error("Error sending batch to SQS: {}", e.getMessage(), e);
             messages.forEach(buffer::offer);
