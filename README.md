@@ -325,7 +325,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ## Benchmarks
 
-### Benchmark #1 - Configuração com Delay (100ms)
+### Benchmark #1 - Configuração com Delay (10ms)
 **Data:** 12/09/2026
 
 #### Configuração
@@ -337,14 +337,15 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | **Consumer Group** | `high-perf-consumer-group` |
 | **Max Poll Records** | 500 |
 | **Fetch Min Bytes** | 1 |
-| **Fetch Max Wait** | 100ms |
+| **Fetch Max Wait** | 10ms |
 | **Concurrency** | 1 (por container) |
 | **Containers** | 6 réplicas Spring Boot |
 | **Load Workers** | 48 goroutines |
 | **Batch Size** | 1000 |
-| **Processing Delay** | 100ms |
+| **Processing Delay** | 10ms |
 | **CPU Limit** | 0.5 por container |
 | **Memory Limit** | 1GB por container |
+| **SQS Mode** | Síncrono |
 
 #### Resultado
 
@@ -391,8 +392,8 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 
 ---
 
-### Benchmark #2 - [Título]
-**Data:** [DD/MM/AAAA]
+### Benchmark #2 - Async SQS com Delay (10ms)
+**Data:** 12/09/2026
 
 #### Configuração
 
@@ -403,36 +404,65 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | **Consumer Group** | `high-perf-consumer-group` |
 | **Max Poll Records** | 500 |
 | **Fetch Min Bytes** | 1 |
-| **Fetch Max Wait** | 100ms |
+| **Fetch Max Wait** | 10ms |
 | **Concurrency** | 1 (por container) |
 | **Containers** | 6 réplicas Spring Boot |
 | **Load Workers** | 48 goroutines |
 | **Batch Size** | 1000 |
-| **Processing Delay** | [X]ms |
+| **Processing Delay** | 10ms |
 | **CPU Limit** | 0.5 por container |
 | **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async (@Async) |
 
 #### Resultado
 
 ```
-[Colar saída do monitor aqui]
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     22:57:48
+  End:       22:59:43
+  Duration:  115.6s
+  Total:    60047 msgs
+  Avg Rate: 520 msg/s
+  Peak Rate: 2384 msg/s
+  SQS Queue: 60047 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60047 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10008     5852  9.96ms          9.96ms          9.96ms          0.6/9.0/40.5%      182/217/221 MiB   
+  8081        10008     6346  9.96ms          9.96ms          9.96ms          0.8/8.3/44.3%      177/212/216 MiB   
+  8082        10008     5917  9.96ms          9.96ms          9.96ms          0.6/7.7/44.8%      177/211/221 MiB   
+  8083        10008     5990  9.96ms          9.96ms          9.96ms          0.6/7.5/39.0%      176/212/218 MiB   
+  8084        10008     5763  9.96ms          9.96ms          9.96ms          0.7/9.3/41.2%      178/212/217 MiB   
+  8085        10007     5875  9.96ms          9.96ms          9.96ms          0.5/8.0/42.2%      180/215/218 MiB
 ```
 
 | Métrica | Valor |
 |---------|-------|
-| **Throughput Médio** | [X] msg/s |
-| **Throughput Pico** | [X] msg/s |
-| **Latência P50** | [X]ms |
-| **Latência P90** | [X]ms |
-| **Latência P99** | [X]ms |
-| **Lag Max** | [X] msgs |
-| **SQS Status** | [✓/⚠] |
-| **CPU Max** | [X]% |
-| **Memória Max** | [X] MiB |
+| **Throughput Médio** | 520 msg/s |
+| **Throughput Pico** | 2.384 msg/s |
+| **Latência P50** | 9.96ms |
+| **Latência P90** | 9.96ms |
+| **Latência P99** | 9.96ms |
+| **Lag Max** | 5.763-6.346 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 39-45% |
+| **Memória Max** | 216-221 MiB |
 
 #### Alterações em Relação ao Benchmark #1
 
-- [Descrever mudanças feitas]
+- **SQS Mode**: Síncrono → Async (@Async)
+- **Throughput**: +10.6% (470 → 520 msg/s)
+- **Latência P50**: -9.5% (11.01ms → 9.96ms)
+- **Lag Max**: +55% (3.756-4.658 → 5.763-6.346)
 
 ---
 

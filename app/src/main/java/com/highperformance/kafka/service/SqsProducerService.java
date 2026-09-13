@@ -3,6 +3,7 @@ package com.highperformance.kafka.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
@@ -23,6 +24,7 @@ public class SqsProducerService {
         this.queueUrl = endpointUrl + "/000000000000/" + queueName;
     }
 
+    @Async
     public void sendMessage(String messageBody) {
         SendMessageRequest request = SendMessageRequest.builder()
                 .queueUrl(queueUrl)
