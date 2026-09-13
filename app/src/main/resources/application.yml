@@ -19,7 +19,7 @@ spring:
         fetch.min.bytes: 1
         fetch.max.wait.ms: 100
     listener:
-      concurrency: 1
+      concurrency: 3
 
 aws:
   endpoint-url: ${AWS_ENDPOINT_URL:http://localhost:4566}
