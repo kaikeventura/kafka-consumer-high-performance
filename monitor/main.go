@@ -213,7 +213,7 @@ func collectStats(client *http.Client, basePort, numContainers int) []ContainerS
 		port := basePort + i
 		stats[i] = ContainerStats{Port: port, Healthy: false}
 
-		count, err := fetchMetric(client, port, "spring.kafka.listener", "COUNT")
+		count, err := fetchMetric(client, port, "kafka.messages.processed", "COUNT")
 		if err != nil {
 			continue
 		}

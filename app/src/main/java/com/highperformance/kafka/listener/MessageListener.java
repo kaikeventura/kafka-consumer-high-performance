@@ -3,6 +3,8 @@ package com.highperformance.kafka.listener;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.highperformance.kafka.service.SqsProducerService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.annotation.Timed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,10 +20,16 @@ public class MessageListener {
 
     private final SqsProducerService sqsProducerService;
     private final ObjectMapper objectMapper;
+    private final Counter messageCounter;
 
-    public MessageListener(SqsProducerService sqsProducerService, ObjectMapper objectMapper) {
+    public MessageListener(SqsProducerService sqsProducerService,
+                           ObjectMapper objectMapper,
+                           MeterRegistry meterRegistry) {
         this.sqsProducerService = sqsProducerService;
         this.objectMapper = objectMapper;
+        this.messageCounter = Counter.builder("kafka.messages.processed")
+                .description("Total messages processed")
+                .register(meterRegistry);
     }
 
     @Timed(value = "kafka.listener.seconds", description = "Time spent processing Kafka messages")
@@ -42,6 +50,7 @@ public class MessageListener {
                 );
 
                 sqsProducerService.sendMessage(processedMessage);
+                messageCounter.increment();
 
                 log.debug("Message processed: id={}", id);
             } catch (Exception e) {
