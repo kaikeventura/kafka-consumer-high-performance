@@ -342,6 +342,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | 11 | fetch.wait=1 + load batch=5000 | 4078 msg/s | +768% | 6.54-503ms | ✓ |
 | **12** | **Parallel SQS** | **4623 msg/s** | **+884%** | **201-499ms** | ✓ |
 | 13 | JVM Tuning (G1GC) | 3414 msg/s | +626% | 209-603ms | ✓ |
+| **14** | **Jackson Afterburner** | **3518 msg/s** | **+648%** | **301-700ms** | ✓ |
 
 **Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s com listener simples.
 
@@ -1344,6 +1345,87 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 - **Latência P50**: +108% (201-499ms → 209-603ms) ❌
 
 **Conclusão**: JVM tuning com G1GC causou overhead em vez de melhoria. As flags `-XX:MaxGCPauseMillis=20` e `-XX:G1HeapRegionSize=4m` aumentaram uso de memória e reduziram throughput. **Revertido para configuração padrão.**
+
+---
+
+### Benchmark #14 - Jackson Afterburner ❌ FALHOU
+**Data:** 13/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 2000 |
+| **Fetch Min Bytes** | 4096 |
+| **Fetch Max Wait** | 1ms |
+| **Concurrency** | 5 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 192 goroutines |
+| **Batch Size** | 5000 |
+| **Processing Delay** | 0ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Parallel Batch (100 msgs) |
+| **Kafka Listener** | Batch (até 2000 msgs/poll) |
+| **Jackson** | AfterburnerModule (bytecode optimization) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     01:08:14
+  End:       01:08:32
+  Duration:  17.1s
+  Total:    60191 msgs
+  Avg Rate: 3518 msg/s
+  Peak Rate: 49245 msg/s
+  SQS Queue: 60191 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60191 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10032     0  700.45ms       2143.29ms      2143.29ms      5.3/28.7/49.6%     181/232/261 MiB   
+  8081        10032     0  402.39ms       1744.57ms      1744.57ms      6.0/35.4/50.4%     176/222/253 MiB   
+  8082        10032     0  301.73ms       939.26ms       1207.70ms      6.6/38.4/50.4%     172/224/249 MiB   
+  8083        10031     0  301.86ms       1409.16ms      1610.48ms      7.7/34.4/50.3%     173/223/248 MiB   
+  8084        10032     0  368.97ms       805.18ms       1610.48ms      4.2/27.2/50.2%     173/238/248 MiB   
+  8085        10032     0  368.97ms       2147.35ms      2147.35ms      5.9/47.9/51.6%     173/228/261 MiB   
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 3518 msg/s |
+| **Throughput Pico** | 49.245 msg/s |
+| **Latência P50** | 301-700ms |
+| **Latência P90** | 805-2147ms |
+| **Latência P99** | 1207-2147ms |
+| **Lag Max** | 0 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 49-52% |
+| **Memória Max** | 248-261 MiB |
+
+#### Alterações em Relação ao Benchmark #12
+
+- **Jackson**: Default → AfterburnerModule (bytecode optimization para JSON parsing)
+- **Throughput**: -24% (4623 → 3518 msg/s) ❌
+- **Duração**: +32% (13.0s → 17.1s) ❌
+- **Latência P50**: +50% (201-499ms → 301-700ms) ❌
+- **CPU Med**: +50% (30-45% → 28-48%) ❌
+
+**Conclusão**: Jackson Afterburner causou overhead significativo. O módulo de otimização por bytecode não é eficiente para batch listener com alto volume. CPU média subiu 50% e throughput caiu 24%. **Revertido.**
+
+**Causa provável**: O Afterburner gera subclasses dinâmicas via bytecode, que adiciona overhead de classloading e cache de métodos. Com batch listener processando até 2000 msgs por poll, o overhead acumulado supera qualquer ganho de parsing.
 
 ---
 
