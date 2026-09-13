@@ -15,7 +15,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       properties:
-        max.poll.records: 500
+        max.poll.records: 1000
         fetch.min.bytes: 1
         fetch.max.wait.ms: 100
     listener:
