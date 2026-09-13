@@ -29,6 +29,7 @@ aws:
 
 sqs:
   queue-name: output-queue
+  batch-size: 10
 
 processing:
   delay:
