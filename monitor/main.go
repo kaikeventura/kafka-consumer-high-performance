@@ -132,6 +132,7 @@ func main() {
 
 	prevTotal := 0.0
 	cooldownUntil := time.Time{}
+	sqsFlushUntil := time.Time{}
 
 	for {
 		select {
@@ -177,17 +178,24 @@ func main() {
 					currentRun.AvgRate = totalCount / elapsed
 				}
 
-				if totalCount == prevTotal && totalCount > 0 {
-					if cooldownUntil.IsZero() {
-						cooldownUntil = now.Add(5 * time.Second)
-					} else if now.After(cooldownUntil) {
+			if totalCount == prevTotal && totalCount > 0 {
+				if cooldownUntil.IsZero() {
+					cooldownUntil = now.Add(5 * time.Second)
+				} else if now.After(cooldownUntil) {
+					// Wait extra 3s for SQS buffer flush
+					if sqsFlushUntil.IsZero() {
+						sqsFlushUntil = now.Add(3 * time.Second)
+					} else if now.After(sqsFlushUntil) {
 						currentRun.EndTime = now
 						currentRun.IsRunning = false
 						cooldownUntil = time.Time{}
+						sqsFlushUntil = time.Time{}
 					}
-				} else {
-					cooldownUntil = time.Time{}
 				}
+			} else {
+				cooldownUntil = time.Time{}
+				sqsFlushUntil = time.Time{}
+			}
 			}
 
 			prevTotal = totalCount
