@@ -338,6 +338,7 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 | 7 | fetch.min=4096 + batch=20 | 527 msg/s | +12.1% | 9.96ms | ✓ |
 | **8** | **Batch Listener** | **2433 msg/s** | **+418%** | **0.75ms** | ✓ |
 | 9 | max.poll=2000 + batch=50 | 2261 msg/s | +381% | 0.84ms | ✓ |
+| **10** | **Load workers=192** | **4018 msg/s** | **+755%** | **4.96-301ms** | ✓ |
 
 **Gargalo identificado**: Processing delay (10ms) limita throughput a ~530 msg/s com listener simples.
 
@@ -1025,6 +1026,84 @@ docker compose down -v && docker compose build --no-cache && docker compose up -
 - **CPU Max**: +5% (48-55% → 50-55%)
 
 **Conclusão**: Aumentar max.poll.records e SQS batch não melhorou throughput - na verdade caiu levemente. O gargalo agora é CPU (50-55%). Próxima otimização: aumentar load workers para testar limite real.
+
+---
+
+### Benchmark #10 - Load Workers = 192
+**Data:** 13/09/2026
+
+#### Configuração
+
+| Parâmetro | Valor |
+|-----------|-------|
+| **Kafka Bootstrap** | `kafka:29092` |
+| **Topic** | `input-topic` (6 partições) |
+| **Consumer Group** | `high-perf-consumer-group` |
+| **Max Poll Records** | 2000 |
+| **Fetch Min Bytes** | 4096 |
+| **Fetch Max Wait** | 10ms |
+| **Concurrency** | 5 (por container) |
+| **Containers** | 6 réplicas Spring Boot |
+| **Load Workers** | 192 goroutines |
+| **Batch Size** | 1000 |
+| **Processing Delay** | 0ms |
+| **CPU Limit** | 0.5 por container |
+| **Memory Limit** | 1GB por container |
+| **SQS Mode** | Async + Batch (50 msgs) |
+| **Kafka Listener** | Batch (até 2000 msgs/poll) |
+
+#### Resultado
+
+```
+── RUN STATUS ──────────────────────────────────────────────────────
+  Start:     00:26:35
+  End:       00:26:50
+  Duration:  15.0s
+  Total:    60191 msgs
+  Avg Rate: 4018 msg/s
+  Peak Rate: 52611 msg/s
+  SQS Queue: 60191 msgs
+  Status:   ✓ All messages in SQS
+
+  ── SUMMARY ─────────────────────────────────────────────────────────
+  Containers:  6 active
+  Processed:  60191 msgs
+  Kafka Lag:   0 msgs
+
+  ── PER CONTAINER ───────────────────────────────────────────────────
+
+  PORT       MSGS      LAG        P50           P90           P99           CPU                MEMORY            
+                       (max)                                                (min/med/max)      (min/med/max)     
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  8080        10032     0  92.26ms         301.97ms        603.96ms        2.4/4.1/49.3%      184/185/216 MiB   
+  8081        10032     0  4.96ms          109.04ms        503.30ms        2.9/10.8/49.3%     186/188/230 MiB   
+  8082        10032     0  209.68ms        738.16ms        738.16ms        1.7/6.5/48.7%      187/188/220 MiB   
+  8083        10032     0  301.47ms        603.46ms        704.12ms        1.7/5.7/49.3%      185/186/219 MiB   
+  8084        10032     0  201.20ms        603.85ms        637.40ms        2.1/2.9/49.8%      188/190/218 MiB   
+  8085        10031     0  109.02ms        419.40ms        503.28ms        1.9/4.3/49.4%      182/185/216 MiB
+```
+
+| Métrica | Valor |
+|---------|-------|
+| **Throughput Médio** | 4018 msg/s |
+| **Throughput Pico** | 52.611 msg/s |
+| **Latência P50** | 4.96-301ms |
+| **Latência P90** | 109-738ms |
+| **Latência P99** | 503-738ms |
+| **Lag Max** | 0 msgs |
+| **SQS Status** | ✓ All messages delivered |
+| **CPU Max** | 48-50% |
+| **Memória Max** | 216-230 MiB |
+
+#### Alterações em Relação ao Benchmark #9
+
+- **Load Workers**: 48 → 192
+- **Throughput**: +77% (2261 → 4018 msg/s)
+- **Duração**: -44% (26.6s → 15.0s)
+- **Peak Rate**: +235% (15702 → 52611 msg/s)
+- **Latência P50**: +593% (0.84ms → 4.96-301ms)
+
+**Conclusão**: Aumentar load workers para 192 dobrou o throughput real. O sistema consegue processar 4000+ msg/s com 6 containers. Latência aumentou significativamente sob carga pesada, mas throughput é o dobro.
 
 ---
 
